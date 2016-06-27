@@ -80,38 +80,46 @@ class ParserGists:
     URL_GIST_PAGE = 'https://gist.github.com/{}?page={}'
     URL_LOGIN = 'https://github.com/login'
 
-    def __init__(self, session, login, password, proxy=None, proxy_type=None):
+    def __init__(self, session, login, password, log_func=None, proxy=None, proxy_type=None):
         self.session = session
         self.query = session.query(Gist)
 
         self.login = login
         self.password = password
 
+        self.log_func = log_func
+
         self.proxy = proxy
         self.proxy_type = proxy_type
+
+        self.stop = False
+
+    def log(self, *args, **kwargs):
+        if self.log_func:
+            self.log_func(*args, **kwargs)
 
     def run(self):
         from grab import Grab
         g = Grab()
         g.setup(proxy=self.proxy, proxy_type=self.proxy_type)
 
-        logging.debug("...Перехожу на страницу входа...")
+        self.log("...Перехожу на страницу входа...")
         g.go(ParserGists.URL_LOGIN)
 
-        logging.debug("...Заполняем формы логина и пароля...")
+        self.log("...Заполняем формы логина и пароля...")
         g.set_input('login', self.login)
         g.set_input('password', self.password)
 
-        logging.debug("...Отсылаю данные формы...")
+        self.log("...Отсылаю данные формы...")
         g.submit()
 
         page = 1
 
-        logging.debug("...Перехожу на страницу с гистов...")
+        self.log("...Перехожу на страницу с гистов...")
         g.go(ParserGists.URL_GIST_PAGE.format(self.login, page))
 
         redirect = g.css_one('.blankslate p a').attrib['href']
-        logging.debug("...Выполняю редирект на {}...".format(redirect))
+        self.log("...Выполняю редирект на {}...".format(redirect))
         g.go(redirect)
 
         css_select_gist = '.gist-snippet .byline'
@@ -131,7 +139,7 @@ class ParserGists:
 
                     # Проверка, что в базе гиста с таким url нет
                     if self.has_gist(href):
-                        logging.debug('Гист с url "%s" уже есть в базе', href)
+                        self.log('Гист с url "%s" уже есть в базе', href)
                         continue
 
                     desc = gist.cssselect('.description')
@@ -142,7 +150,7 @@ class ParserGists:
                     else:
                         desc = desc[0].text.strip()
 
-                    logging.debug('{}. "{}": {}'.format(i, desc, href))
+                    self.log('{}. "{}": {}'.format(i, desc, href))
 
                     # Получение содержимого гиста
                     text = self.get_gist_content(g, href)
@@ -152,6 +160,7 @@ class ParserGists:
                     self.session.commit()
 
             except Exception:
+                # TODO: перенести в log
                 logging.exception('Error:')
 
             page += 1
@@ -160,21 +169,20 @@ class ParserGists:
             if not g.css_exists(css_select_gist):
                 break
 
-        logging.debug("...На сбор потрачено времени %s...", time.clock() - t)
+        self.log("...На сбор потрачено времени %s...", time.clock() - t)
 
     def has_gist(self, url):
         # Проверка, что в базе гиста с таким url нет
         has = self.query.filter(Gist.url == url).exists()
         return self.session.query(literal(True)).filter(has).scalar()
 
-    @staticmethod
-    def get_gist_content(grab, url):
+    def get_gist_content(self, grab, url):
         # Переход на страницу гиста
         grab.go(url)
         text = ''
         for url_raw in grab.css_list('.file .file-header .file-actions a'):
             href = urljoin(grab.response.url, url_raw.attrib['href'])
-            logging.debug('    {}'.format(href))
+            self.log('    {}'.format(href))
 
             grab.go(href)
             text += grab.response.body
@@ -205,6 +213,61 @@ class MainWindow(QMainWindow):
         central_widget.setLayout(layout)
         self.setCentralWidget(central_widget)
 
+        tool_bar = self.addToolBar('MainToolBar')
+        action = tool_bar.addAction("Перечитать все гисты пользователя")
+        action.triggered.connect(self.reload)
+
+    def reload(self):
+        for _ in session.query(Gist).all():
+            session.delete(_)
+        session.commit()
+
+        dialog = QDialog()
+        dialog.setWindowTitle('Reload')
+        dialog.resize(200, 200)
+
+        dialog_button_box = QDialogButtonBox()
+        dialog_button_box.accepted.connect(dialog.accept)
+        dialog_button_box.rejected.connect(dialog.reject)
+
+        log_text_edit = QPlainTextEdit()
+        log_text_edit.setReadOnly(True)
+
+        layout = QVBoxLayout()
+        layout.addWidget(log_text_edit)
+        layout.addWidget(dialog_button_box)
+
+        dialog.setLayout(layout)
+        dialog.show()
+
+        import config
+
+        def log(*args, **kwargs):
+            logging.debug(*args, **kwargs)
+
+            # Используем стандартный print для печати в строку
+            import io
+            str_io = io.StringIO()
+            kwargs['file'] = str_io
+            kwargs['end'] = ''
+            print(*args, **kwargs)
+            text = str_io.getvalue()
+            log_text_edit.appendPlainText(text)
+
+            QApplication.processEvents()
+
+        parser = ParserGists(
+            session,
+            config.login, config.password,
+            log,
+            config.proxy, config.proxy_type
+        )
+        parser.run()
+
+        dialog.exec_()
+
+        self.run_filter()
+
     def run_filter(self):
         # TODO: лучше использовать модель
         # TODO: лучше использовать стандартный фильтр qt
@@ -218,6 +281,8 @@ class MainWindow(QMainWindow):
         for gist in session.query(Gist).filter(sql_filter).all():
             self.gist_list.addItem(gist.url + ': ' + gist.description)
 
+    def closeEvent(self, *args, **kwargs):
+        quit()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
@@ -227,14 +292,3 @@ if __name__ == '__main__':
     mw.run_filter()
 
     app.exec_()
-
-    # # TODO: перенести в MainWindow
-    # # TODO: добавить кнопку для пересчитывания гистов
-    # import config
-    #
-    # parser = ParserGists(
-    #     session,
-    #     config.login, config.password,
-    #     config.proxy, config.proxy_type
-    # )
-    # parser.run()
