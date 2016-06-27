@@ -5,15 +5,15 @@ __author__ = 'ipetrash'
 
 
 import sys
-# import logging
-# logging.basicConfig(
-#     level=logging.DEBUG,
-#     format='[%(asctime)s] %(filename)s[LINE:%(lineno)d] %(levelname)-8s %(message)s',
-#     handlers=[
-#         logging.FileHandler('log', encoding='utf8'),
-#         logging.StreamHandler(stream=sys.stdout),
-#     ],
-# )
+import logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='[%(asctime)s] %(filename)s[LINE:%(lineno)d] %(levelname)-8s %(message)s',
+    handlers=[
+        logging.FileHandler('log', encoding='utf8'),
+        logging.StreamHandler(stream=sys.stdout),
+    ],
+)
 
 
 from sqlalchemy import Column, Integer, String, literal
@@ -73,30 +73,29 @@ session = get_session()
 
 
 if __name__ == '__main__':
+    import config
+
     from grab import Grab
     g = Grab()
+    g.setup(proxy=config.proxy, proxy_type=config.proxy_type)
 
-    print("...Перехожу на страницу входа...")
+    logging.debug("...Перехожу на страницу входа...")
     g.go('https://github.com/login')
 
-    login = ''
-    password = ''
+    logging.debug("...Заполняем формы логина и пароля...")
+    g.set_input('login', config.login)
+    g.set_input('password', config.password)
 
-    print("...Заполняем формы логина и пароля...")
-    g.set_input('login', login)
-    g.set_input('password', password)
-
-    print("...Отсылаю данные формы...")
+    logging.debug("...Отсылаю данные формы...")
     g.submit()
-
 
     page = 1
 
-    print("...Перехожу на страницу с гистов...")
+    logging.debug("...Перехожу на страницу с гистов...")
     g.go("https://gist.github.com/gil9red?page={}".format(page))
 
     redirect = g.css_one('.blankslate p a').attrib['href']
-    print("...Выполняю редирект на {}...".format(redirect))
+    logging.debug("...Выполняю редирект на {}...".format(redirect))
     g.go(redirect)
 
     css_select_gist = '.gist-snippet .byline'
@@ -104,7 +103,6 @@ if __name__ == '__main__':
     i = 0
 
     from urllib.parse import urljoin
-
 
     import time
     t = time.clock()
@@ -129,19 +127,17 @@ if __name__ == '__main__':
             else:
                 desc = desc[0].text.strip()
 
-            print('{}. "{}": {}'.format(i, desc, href))
+            logging.debug('{}. "{}": {}'.format(i, desc, href))
 
             # Переход на страницу гиста
             g.go(href)
             text = ''
             for url_raw in g.css_list('.file .file-header .file-actions a'):
                 href = urljoin(g.response.url, url_raw.attrib['href'])
-                print('    {}'.format(href))
+                logging.debug('    {}'.format(href))
 
                 g.go(href)
                 text += g.response.body
-
-            print()
 
             gist = Gist(href, desc, text)
             session.add(gist)
@@ -154,8 +150,4 @@ if __name__ == '__main__':
 
     session.commit()
 
-    for gist in session.query(Gist).all():
-        print(gist)
-
-    print()
-    print("Time:", time.clock() - t)
+    logging.debug("...На сбор потрачено времени %s...", time.clock() - t)
