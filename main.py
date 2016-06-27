@@ -204,6 +204,7 @@ class MainWindow(QMainWindow):
         self.filter_line_edit.textEdited.connect(self.run_filter)
 
         self.gist_list = QListWidget()
+        self.gist_list.itemDoubleClicked.connect(self.item_double_click)
 
         layout = QVBoxLayout()
         layout.addWidget(self.filter_line_edit)
@@ -216,6 +217,11 @@ class MainWindow(QMainWindow):
         tool_bar = self.addToolBar('MainToolBar')
         action = tool_bar.addAction("Перечитать все гисты пользователя")
         action.triggered.connect(self.reload)
+
+    @staticmethod
+    def item_double_click(item):
+        url = item.data(Qt.UserRole)
+        QDesktopServices.openUrl(url)
 
     def reload(self):
         for _ in session.query(Gist).all():
@@ -280,7 +286,10 @@ class MainWindow(QMainWindow):
         sql_filter = or_(Gist.description.like(filter_text), Gist.text.like(filter_text))
 
         for gist in session.query(Gist).filter(sql_filter).all():
-            self.gist_list.addItem(gist.url + ': ' + gist.description)
+            item = QListWidgetItem(gist.url + ': ' + gist.description)
+            item.setData(Qt.UserRole, gist.url)
+            item.setData(Qt.UserRole + 1, gist.description)
+            self.gist_list.addItem(item)
 
     def closeEvent(self, *args, **kwargs):
         quit()
