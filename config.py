@@ -6,3 +6,6 @@ __author__ = 'ipetrash'
 
 login = ''
 password = ''
+
+proxy = None
+proxy_type = None
