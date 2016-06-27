@@ -214,9 +214,18 @@ class MainWindow(QMainWindow):
         central_widget.setLayout(layout)
         self.setCentralWidget(central_widget)
 
-        tool_bar = self.addToolBar('MainToolBar')
-        action = tool_bar.addAction("Перечитать все гисты пользователя")
-        action.triggered.connect(self.reload)
+        tool_bar = self.addToolBar('Основное')
+        action_reload = tool_bar.addAction("Перечитать все гисты пользователя")
+        action_reload.setToolTip('Удаление текущих гистов и подгрузка новых')
+        action_reload.setStatusTip(action_reload.toolTip())
+        action_reload.triggered.connect(self.reload)
+
+        action_sync = tool_bar.addAction("Синхронизация")
+        action_sync.setToolTip('Удаление уже несуществующих гистов и добавление новых')
+        action_sync.setStatusTip(action_reload.toolTip())
+        action_sync.triggered.connect(self.sync)
+
+        self.setStatusBar(QStatusBar())
 
     @staticmethod
     def item_double_click(item):
@@ -245,7 +254,6 @@ class MainWindow(QMainWindow):
         layout.addWidget(dialog_button_box)
 
         dialog.setLayout(layout)
-        dialog.show()
 
         import config
 
@@ -263,15 +271,107 @@ class MainWindow(QMainWindow):
 
             QApplication.processEvents()
 
+        if not config.login or not config.password:
+            QMessageBox.information(self, "Внимание", "Не указан логин или пароль.")
+            return
+
+        dialog.show()
+
         parser = ParserGists(
             session,
             config.login, config.password,
             log,
             config.proxy, config.proxy_type
         )
-        parser.run()
+        try:
+            parser.run()
+        except Exception:
+            import traceback
+            log(traceback.format_exc())
 
-        dialog.exec_()
+        dialog.close()
+
+        self.run_filter()
+
+    def sync(self):
+        # TODO: дублирование reload
+        # TODO: возможность прервать считывание
+        dialog = QDialog()
+        dialog.setWindowTitle('Sync')
+        dialog.resize(200, 200)
+
+        dialog_button_box = QDialogButtonBox()
+        dialog_button_box.accepted.connect(dialog.accept)
+        dialog_button_box.rejected.connect(dialog.reject)
+
+        log_text_edit = QPlainTextEdit()
+        log_text_edit.setReadOnly(True)
+
+        layout = QVBoxLayout()
+        layout.addWidget(log_text_edit)
+        layout.addWidget(dialog_button_box)
+
+        dialog.setLayout(layout)
+
+        import config
+
+        def log(*args, **kwargs):
+            logging.debug(*args, **kwargs)
+
+            # Используем стандартный print для печати в строку
+            import io
+            str_io = io.StringIO()
+            kwargs['file'] = str_io
+            kwargs['end'] = ''
+            print(*args, **kwargs)
+            text = str_io.getvalue()
+            log_text_edit.appendPlainText(text)
+
+            QApplication.processEvents()
+
+        if not config.login or not config.password:
+            QMessageBox.information(self, "Внимание", "Не указан логин или пароль.")
+            return
+
+        dialog.show()
+
+        # TODO: вынести в класс
+        def check_url(url):
+            """Функция проверяет, что url доступен."""
+
+            from urllib.error import HTTPError
+
+            try:
+                from urllib.request import urlopen
+                urlopen(url)
+            except HTTPError as e:
+                if e.code == 404:
+                    return False
+
+            return True
+
+        for _ in session.query(Gist).all():
+            if not check_url(_.url):
+                log('Гист с url: "%s", description: "%s" не существует.', _.url, _.description)
+                session.delete(_)
+            else:
+                log('Гист с url: "%s", description: "%s" существует.', _.url, _.description)
+
+        session.commit()
+
+        parser = ParserGists(
+            session,
+            config.login, config.password,
+            log,
+            config.proxy, config.proxy_type
+        )
+        try:
+            parser.run()
+        except Exception:
+            import traceback
+            log(traceback.format_exc())
+
+        dialog.close()
 
         self.run_filter()
 
@@ -298,6 +398,7 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
 
     mw = MainWindow()
+    mw.resize(500, 300)
     mw.show()
     mw.run_filter()
 
