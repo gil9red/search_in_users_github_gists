@@ -222,6 +222,7 @@ class MainWindow(QMainWindow):
             session.delete(_)
         session.commit()
 
+        # TODO: возможность прервать считывание
         dialog = QDialog()
         dialog.setWindowTitle('Reload')
         dialog.resize(200, 200)
