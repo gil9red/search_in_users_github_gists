@@ -72,82 +72,106 @@ def get_session():
 session = get_session()
 
 
-if __name__ == '__main__':
-    import config
+import config
+from urllib.parse import urljoin
 
-    from grab import Grab
-    g = Grab()
-    g.setup(proxy=config.proxy, proxy_type=config.proxy_type)
 
-    logging.debug("...Перехожу на страницу входа...")
-    g.go('https://github.com/login')
+class ParserGists:
+    URL_GIST_PAGE = 'https://gist.github.com/{}?page={}'
+    URL_LOGIN = 'https://github.com/login'
 
-    logging.debug("...Заполняем формы логина и пароля...")
-    g.set_input('login', config.login)
-    g.set_input('password', config.password)
+    def __init__(self, session):
+        self.session = session
+        self.query = session.query(Gist)
 
-    logging.debug("...Отсылаю данные формы...")
-    g.submit()
+    def run(self):
+        from grab import Grab
+        g = Grab()
+        g.setup(proxy=config.proxy, proxy_type=config.proxy_type)
 
-    page = 1
+        logging.debug("...Перехожу на страницу входа...")
+        g.go(ParserGists.URL_LOGIN)
 
-    logging.debug("...Перехожу на страницу с гистов...")
-    g.go("https://gist.github.com/gil9red?page={}".format(page))
+        logging.debug("...Заполняем формы логина и пароля...")
+        g.set_input('login', config.login)
+        g.set_input('password', config.password)
 
-    redirect = g.css_one('.blankslate p a').attrib['href']
-    logging.debug("...Выполняю редирект на {}...".format(redirect))
-    g.go(redirect)
+        logging.debug("...Отсылаю данные формы...")
+        g.submit()
 
-    css_select_gist = '.gist-snippet .byline'
+        page = 1
 
-    i = 0
+        logging.debug("...Перехожу на страницу с гистов...")
+        g.go(ParserGists.URL_GIST_PAGE.format(config.login, page))
 
-    from urllib.parse import urljoin
+        redirect = g.css_one('.blankslate p a').attrib['href']
+        logging.debug("...Выполняю редирект на {}...".format(redirect))
+        g.go(redirect)
 
-    import time
-    t = time.clock()
+        css_select_gist = '.gist-snippet .byline'
 
-    while True:
-        for gist in g.css_list(css_select_gist):
-            i += 1
+        i = 0
 
-            a = gist.cssselect('.creator a')[1]
-            href = urljoin(g.response.url, a.attrib['href'])
+        import time
+        t = time.clock()
 
-            # Проверка, что в базе гиста с таким url нет
-            has = session.query(Gist).filter(Gist.url == href).exists()
-            has = session.query(literal(True)).filter(has).scalar()
-            if has:
-                continue
+        while True:
+            for gist in g.css_list(css_select_gist):
+                i += 1
 
-            desc = gist.cssselect('.description')
-            desc_children = desc[0].xpath('child::*')
-            if desc_children:
-                desc = ' '.join([_.text.strip() for _ in desc + desc_children]).strip()
-            else:
-                desc = desc[0].text.strip()
+                a = gist.cssselect('.creator a')[1]
+                href = urljoin(g.response.url, a.attrib['href'])
 
-            logging.debug('{}. "{}": {}'.format(i, desc, href))
+                # Проверка, что в базе гиста с таким url нет
+                if self.has_gist(href):
+                    continue
 
-            # Переход на страницу гиста
-            g.go(href)
-            text = ''
-            for url_raw in g.css_list('.file .file-header .file-actions a'):
-                href = urljoin(g.response.url, url_raw.attrib['href'])
-                logging.debug('    {}'.format(href))
+                desc = gist.cssselect('.description')
+                desc_children = desc[0].xpath('child::*')
+                if desc_children:
+                    desc = ' '.join([_.text.strip() for _ in desc + desc_children]).strip()
+                else:
+                    desc = desc[0].text.strip()
 
-                g.go(href)
-                text += g.response.body
+                logging.debug('{}. "{}": {}'.format(i, desc, href))
 
-            gist = Gist(href, desc, text)
-            session.add(gist)
+                # Получение содержимого гиста
+                text = self.get_gist_content(g, href)
 
-        page += 1
-        g.go("https://gist.github.com/gil9red?page={}".format(page))
+                gist = Gist(href, desc, text)
+                self.session.add(gist)
 
-        if not g.css_exists(css_select_gist):
+            page += 1
+            g.go(ParserGists.URL_GIST_PAGE.format(page))
+
+            if not g.css_exists(css_select_gist):
+                break
+
             break
 
-    session.commit()
+        self.session.commit()
 
-    logging.debug("...На сбор потрачено времени %s...", time.clock() - t)
+        logging.debug("...На сбор потрачено времени %s...", time.clock() - t)
+
+    def has_gist(self, url):
+        # Проверка, что в базе гиста с таким url нет
+        has = self.query.filter(Gist.url == url).exists()
+        return self.session.query(literal(True)).filter(has).scalar()
+
+    @staticmethod
+    def get_gist_content(grab, url):
+        # Переход на страницу гиста
+        grab.go(url)
+        text = ''
+        for url_raw in grab.css_list('.file .file-header .file-actions a'):
+            href = urljoin(grab.response.url, url_raw.attrib['href'])
+            logging.debug('    {}'.format(href))
+
+            grab.go(href)
+            text += grab.response.body
+
+        return text
+
+if __name__ == '__main__':
+    parser = ParserGists(session)
+    parser.run()
