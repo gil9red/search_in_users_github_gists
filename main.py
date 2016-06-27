@@ -72,7 +72,6 @@ def get_session():
 session = get_session()
 
 
-import config
 from urllib.parse import urljoin
 
 
@@ -80,21 +79,27 @@ class ParserGists:
     URL_GIST_PAGE = 'https://gist.github.com/{}?page={}'
     URL_LOGIN = 'https://github.com/login'
 
-    def __init__(self, session):
+    def __init__(self, session, login, password, proxy=None, proxy_type=None):
         self.session = session
         self.query = session.query(Gist)
+
+        self.login = login
+        self.password = password
+
+        self.proxy = proxy
+        self.proxy_type = proxy_type
 
     def run(self):
         from grab import Grab
         g = Grab()
-        g.setup(proxy=config.proxy, proxy_type=config.proxy_type)
+        g.setup(proxy=self.proxy, proxy_type=self.proxy_type)
 
         logging.debug("...Перехожу на страницу входа...")
         g.go(ParserGists.URL_LOGIN)
 
         logging.debug("...Заполняем формы логина и пароля...")
-        g.set_input('login', config.login)
-        g.set_input('password', config.password)
+        g.set_input('login', self.login)
+        g.set_input('password', self.password)
 
         logging.debug("...Отсылаю данные формы...")
         g.submit()
@@ -102,7 +107,7 @@ class ParserGists:
         page = 1
 
         logging.debug("...Перехожу на страницу с гистов...")
-        g.go(ParserGists.URL_GIST_PAGE.format(config.login, page))
+        g.go(ParserGists.URL_GIST_PAGE.format(self.login, page))
 
         redirect = g.css_one('.blankslate p a').attrib['href']
         logging.debug("...Выполняю редирект на {}...".format(redirect))
@@ -172,6 +177,13 @@ class ParserGists:
 
         return text
 
+
 if __name__ == '__main__':
-    parser = ParserGists(session)
+    import config
+
+    parser = ParserGists(
+        session,
+        config.login, config.password,
+        config.proxy, config.proxy_type
+    )
     parser.run()
