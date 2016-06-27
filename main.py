@@ -121,40 +121,43 @@ class ParserGists:
         t = time.clock()
 
         while True:
-            for gist in g.css_list(css_select_gist):
-                i += 1
+            try:
+                for gist in g.css_list(css_select_gist):
+                    i += 1
 
-                a = gist.cssselect('.creator a')[1]
-                href = urljoin(g.response.url, a.attrib['href'])
+                    a = gist.cssselect('.creator a')[1]
+                    href = urljoin(g.response.url, a.attrib['href'])
 
-                # Проверка, что в базе гиста с таким url нет
-                if self.has_gist(href):
-                    continue
+                    # Проверка, что в базе гиста с таким url нет
+                    if self.has_gist(href):
+                        logging.debug('Гист с url "%s" уже есть в базе', href)
+                        continue
 
-                desc = gist.cssselect('.description')
-                desc_children = desc[0].xpath('child::*')
-                if desc_children:
-                    desc = ' '.join([_.text.strip() for _ in desc + desc_children]).strip()
-                else:
-                    desc = desc[0].text.strip()
+                    desc = gist.cssselect('.description')
 
-                logging.debug('{}. "{}": {}'.format(i, desc, href))
+                    desc_children = desc[0].xpath('child::*')
+                    if desc_children:
+                        desc = ' '.join([_.text.strip() for _ in desc + desc_children]).strip()
+                    else:
+                        desc = desc[0].text.strip()
 
-                # Получение содержимого гиста
-                text = self.get_gist_content(g, href)
+                    logging.debug('{}. "{}": {}'.format(i, desc, href))
 
-                gist = Gist(href, desc, text)
-                self.session.add(gist)
+                    # Получение содержимого гиста
+                    text = self.get_gist_content(g, href)
+
+                    gist = Gist(href, desc, text)
+                    self.session.add(gist)
+                    self.session.commit()
+
+            except Exception:
+                logging.exception('Error:')
 
             page += 1
-            g.go(ParserGists.URL_GIST_PAGE.format(page))
+            g.go(ParserGists.URL_GIST_PAGE.format(self.login, page))
 
             if not g.css_exists(css_select_gist):
                 break
-
-            break
-
-        self.session.commit()
 
         logging.debug("...На сбор потрачено времени %s...", time.clock() - t)
 
