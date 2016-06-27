@@ -16,7 +16,7 @@ logging.basicConfig(
 )
 
 
-from sqlalchemy import Column, Integer, String, literal
+from sqlalchemy import Column, Integer, String, literal, or_
 from sqlalchemy.ext.declarative import declarative_base
 Base = declarative_base()
 
@@ -75,6 +75,7 @@ session = get_session()
 from urllib.parse import urljoin
 
 
+# TODO: перенесение в py
 class ParserGists:
     URL_GIST_PAGE = 'https://gist.github.com/{}?page={}'
     URL_LOGIN = 'https://github.com/login'
@@ -181,12 +182,59 @@ class ParserGists:
         return text
 
 
-if __name__ == '__main__':
-    import config
+from PySide.QtGui import *
+from PySide.QtCore import *
 
-    parser = ParserGists(
-        session,
-        config.login, config.password,
-        config.proxy, config.proxy_type
-    )
-    parser.run()
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+
+        self.setWindowTitle('search_in_users_github_gists')
+
+        self.filter_line_edit = QLineEdit()
+        self.filter_line_edit.textEdited.connect(self.run_filter)
+
+        self.gist_list = QListWidget()
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.filter_line_edit)
+        layout.addWidget(self.gist_list)
+
+        central_widget = QWidget()
+        central_widget.setLayout(layout)
+        self.setCentralWidget(central_widget)
+
+    def run_filter(self):
+        # TODO: лучше использовать модель
+        # TODO: лучше использовать стандартный фильтр qt
+        # TODO: поиграться с делегатами для красивого отображения описания + ссылки на гист
+        self.gist_list.clear()
+
+        filter_text = self.filter_line_edit.text()
+        filter_text = "%{}%".format(filter_text)
+        sql_filter = or_(Gist.description.like(filter_text), Gist.text.like(filter_text))
+
+        for gist in session.query(Gist).filter(sql_filter).all():
+            self.gist_list.addItem(gist.url + ': ' + gist.description)
+
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+
+    mw = MainWindow()
+    mw.show()
+    mw.run_filter()
+
+    app.exec_()
+
+    # # TODO: перенести в MainWindow
+    # # TODO: добавить кнопку для пересчитывания гистов
+    # import config
+    #
+    # parser = ParserGists(
+    #     session,
+    #     config.login, config.password,
+    #     config.proxy, config.proxy_type
+    # )
+    # parser.run()
