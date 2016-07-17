@@ -3,4 +3,4 @@
 Скрипт для поиска в gists текущего авторизованного пользователя github.
 
 ##
-![](https://raw.githubusercontent.com/gil9red/search_in_users_github_gists/master/screenshot.png)
+![](screenshot.png)
