@@ -190,8 +190,13 @@ class ParserGists:
         return text
 
 
-from PySide.QtGui import *
-from PySide.QtCore import *
+try:
+    from PySide.QtGui import *
+    from PySide.QtCore import *
+except ImportError:
+    from PyQt4.QtGui import *
+    from PyQt4.QtCore import *
+
 
 
 class MainWindow(QMainWindow):
