@@ -198,7 +198,6 @@ except ImportError:
     from PyQt4.QtCore import *
 
 
-
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -235,7 +234,7 @@ class MainWindow(QMainWindow):
     @staticmethod
     def item_double_click(item):
         url = item.data(Qt.UserRole)
-        QDesktopServices.openUrl(url)
+        QDesktopServices.openUrl(QUrl(url))
 
     def reload(self):
         for _ in session.query(Gist).all():
