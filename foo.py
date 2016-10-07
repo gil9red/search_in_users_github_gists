@@ -13,6 +13,8 @@ from main import session, Gist
 # for gist in session.query(Gist).all():
 #     print(gist)
 
+print(len(session.query(Gist).all()))
+
 # Поиск гистов у которых в заголовке есть строка "go"
 for gist in session.query(Gist).filter(Gist.description.like("%go%")).all():
     print(gist)
