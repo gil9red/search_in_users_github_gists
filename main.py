@@ -235,7 +235,8 @@ class MainWindow(QMainWindow):
             self.gist_list.addItem(item)
 
     def closeEvent(self, *args, **kwargs):
-        quit()
+        QApplication.instance().quit()
+
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
