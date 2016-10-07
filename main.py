@@ -212,11 +212,7 @@ class MainWindow(QMainWindow):
             log,
             config.proxy, config.proxy_type
         )
-        try:
-            parser.run()
-        except Exception:
-            import traceback
-            log(traceback.format_exc())
+        parser.run()
 
         dialog.close()
 
