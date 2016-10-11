@@ -199,10 +199,10 @@ class MainWindow(QMainWindow):
 
         for _ in session.query(Gist).all():
             if not check_url(_.url):
-                log('Гист с url: "%s", description: "%s" не существует.', _.url, _.description)
+                log('Гист с url: "{}", description: "{}" не существует.'.format(_.url, _.description))
                 session.delete(_)
             else:
-                log('Гист с url: "%s", description: "%s" существует.', _.url, _.description)
+                log('Гист с url: "{}", description: "{}" существует.'.format(_.url, _.description))
 
         session.commit()
 
