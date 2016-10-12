@@ -125,6 +125,8 @@ from db import *
 #         return text
 
 
+# TODO: use github.get_user().get_gists()
+# SimplePyScripts\PyGithub_examples\print_user_repo.py
 class ParserGists:
     URL_GIST_PAGE = 'https://gist.github.com/{}?page={}'
     URL_LOGIN = 'https://github.com/login'
